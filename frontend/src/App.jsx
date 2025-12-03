@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react';
 import { initMercadoPago, Payment } from '@mercadopago/sdk-react';
 
 // TU PUBLIC KEY
-initMercadoPago('TEST-949547b6-1065-4b13-84f1-7bf562db0b19', { locale: 'es-PE' });
-
+const publicKey = import.meta.env.VITE_MP_PUBLIC_KEY;
+initMercadoPago(publicKey, { locale: 'es-PE' });
 function App() {
   const [preferenceId, setPreferenceId] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -62,34 +62,48 @@ function App() {
   };
 
   const onSubmit = async ({ selectedPaymentMethod, formData }) => {
+    console.log("📤 Datos crudos del Brick:", formData);
+
+    // 1. Mapeamos los datos de snake_case a camelCase para el Backend
+    // y agregamos el orderId que falta.
+    const backendData = {
+      token: formData.token,
+      paymentMethodId: formData.payment_method_id, // Traducción clave
+      transactionAmount: formData.transaction_amount, // Traducción clave
+      installments: formData.installments,
+      email: formData.payer.email,
+      payer: formData.payer,
+      orderId: "ORDER-TEST-" + Date.now(), // Generamos un ID único
+    };
+
     return new Promise((resolve, reject) => {
       fetch("http://localhost:3001/payment/process", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(backendData), // 2. Enviamos los datos corregidos
       })
       .then((response) => response.json())
       .then((data) => {
-        console.log("Respuesta:", data);
+        console.log("✅ Respuesta del Backend:", data);
         
-        // Manejo de respuestas
-        if (data.status === 'approved') {
-            alert("✅ ¡Pago Aprobado!");
+        if (data.status === 'approved' || data.status === 'in_process') {
+            alert("¡Pago Procesado Exitosamente! ID: " + data.id);
         } else if (data.status === 'pending') {
-            // CASO YAPE / PAGOEFECTIVO
-            alert("🎫 Código generado. Revisa tu correo o la consola para ver el CIP/QR.");
+             // Caso PagoEfectivo / Yape
+             alert("🎫 Código generado. Revisa tu consola para ver los detalles.");
         } else {
-            alert("Estado: " + data.status);
+            // Si el backend devuelve error controlado
+            alert("Error en el pago: " + (data.message || data.status));
         }
         resolve();
       })
       .catch((error) => {
-        console.error("Error:", error);
+        console.error("❌ Error de red:", error);
         reject();
       });
     });
   };
-
+  
   return (
     <div style={{ display: 'flex', justifyContent: 'center', marginTop: '50px' }}>
       <div style={{ width: '500px', padding: '20px', border: '1px solid #ccc' }}>

@@ -46,7 +46,6 @@ export class PaymentService {
         payment_methods: {
           excluded_payment_methods: [],
           excluded_payment_types: [],
-          installments: 12,
         },
         external_reference: createPreferenceDto.orderId,
         notification_url: `${this.configService.get('BACKEND_URL') || 'http://localhost:3001'}/payment/webhook`,
