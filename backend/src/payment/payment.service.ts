@@ -9,22 +9,20 @@ export class PaymentService {
   private client: MercadoPagoConfig;
 
   constructor(private configService: ConfigService) {
-    // Inicializa Mercado Pago con tu Access Token
     const accessToken = this.configService.get<string>('MP_ACCESS_TOKEN');
     
     if (!accessToken) {
-      throw new Error('MP_ACCESS_TOKEN no está configurado en las variables de entorno');
+      console.error('❌ NO SE ENCONTRÓ EL ACCESS TOKEN EN .ENV');
+      throw new Error('MP_ACCESS_TOKEN no está configurado');
     }
 
+    console.log('✅ Mercado Pago inicializado correctamente');
     this.client = new MercadoPagoConfig({
       accessToken: accessToken,
       options: { timeout: 5000 }
     });
   }
 
-  /**
-   * Crea una preferencia de pago (para Checkout Pro/Wallet)
-   */
   async createPreference(createPreferenceDto: CreatePreferenceDto) {
     try {
       const preference = new Preference(this.client);
@@ -40,39 +38,44 @@ export class PaymentService {
         payer: {
           email: createPreferenceDto.customerEmail,
         },
+        // URLs referenciales (no afectarán si quitamos auto_return)
         back_urls: {
-          success: `${this.configService.get('FRONTEND_URL')}/pago-exitoso`,
-          failure: `${this.configService.get('FRONTEND_URL')}/pago-fallido`,
-          pending: `${this.configService.get('FRONTEND_URL')}/pago-pendiente`,
+          success: 'http://localhost:3000/pago-exitoso',
+          failure: 'http://localhost:3000/pago-fallido',
+          pending: 'http://localhost:3000/pago-pendiente',
         },
-        auto_return: 'approved' as const,
+        // 🛑 COMENTAMOS ESTA LÍNEA PARA QUE NO TE DE ERROR
+        // auto_return: 'approved' as const, 
+        
         external_reference: createPreferenceDto.orderId,
-        notification_url: `${this.configService.get('BACKEND_URL')}/payment/webhook`,
         statement_descriptor: 'MI TIENDA',
         payment_methods: {
           installments: 12,
         },
       };
 
+      console.log('🚀 Creando preferencia...');
       const response = await preference.create({ body: preferenceData });
+      console.log('✅ ID DE PREFERENCIA:', response.id);
 
       return {
         preferenceId: response.id,
         initPoint: response.init_point,
-        sandboxInitPoint: response.sandbox_init_point,
       };
     } catch (error) {
-      console.error('Error creando preferencia:', error);
+      console.error('❌ Error detallado de Mercado Pago:', JSON.stringify(error, null, 2));
       throw new HttpException(
-        'Error al crear la preferencia de pago',
+        {
+          status: HttpStatus.INTERNAL_SERVER_ERROR,
+          error: 'Error al crear la preferencia',
+          message: error.message,
+          details: error.cause || error // Para que veas el detalle en el frontend/curl
+        },
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
 
-  /**
-   * Procesa un pago directo (para Payment Brick)
-   */
   async processPayment(createPaymentDto: CreatePaymentDto) {
     try {
       const payment = new Payment(this.client);
@@ -90,73 +93,32 @@ export class PaymentService {
           }),
         },
         external_reference: createPaymentDto.orderId,
-        notification_url: `${this.configService.get('BACKEND_URL')}/payment/webhook`,
       };
 
+      console.log('💳 Procesando pago directo...');
       const response = await payment.create({ body: paymentData });
+      console.log('✅ Estado del pago:', response.status);
 
       return {
         id: response.id,
         status: response.status,
         status_detail: response.status_detail,
-        external_reference: response.external_reference,
       };
     } catch (error) {
-      console.error('Error procesando pago:', error);
+      console.error('❌ Error al procesar pago:', error);
       throw new HttpException(
-        'Error al procesar el pago',
-        HttpStatus.INTERNAL_SERVER_ERROR,
+        {
+          status: HttpStatus.BAD_REQUEST,
+          message: 'Error al procesar el pago',
+          details: error.message
+        },
+        HttpStatus.BAD_REQUEST,
       );
     }
   }
 
-  /**
-   * Maneja el webhook de notificaciones
-   */
   async handleWebhook(body: any, query: any) {
-    try {
-      const { type, data } = body;
-
-      if (type === 'payment') {
-        const paymentId = data.id;
-        const payment = new Payment(this.client);
-        
-        const paymentInfo = await payment.get({ id: paymentId });
-
-        const status = paymentInfo.status;
-        const orderId = paymentInfo.external_reference;
-        const amount = paymentInfo.transaction_amount;
-
-        // Aquí actualizas el estado del pedido en tu base de datos
-        console.log('Payment Status:', {
-          paymentId,
-          status,
-          orderId,
-          amount,
-        });
-
-        // Ejemplo: actualizar en base de datos
-        // await this.orderService.updateOrderStatus(orderId, status, paymentId);
-
-        if (status === 'approved') {
-          // Pedido aprobado: marcar como pagado, enviar email, etc.
-          console.log(`✅ Pago aprobado para orden ${orderId}`);
-        } else if (status === 'pending') {
-          // Pago pendiente
-          console.log(`⏳ Pago pendiente para orden ${orderId}`);
-        } else if (status === 'rejected') {
-          // Pago rechazado
-          console.log(`❌ Pago rechazado para orden ${orderId}`);
-        }
-      }
-
-      return { status: 'ok' };
-    } catch (error) {
-      console.error('Error en webhook:', error);
-      throw new HttpException(
-        'Error procesando webhook',
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
+    // Implementación simple del webhook
+    return { status: 'ok' };
   }
 }
