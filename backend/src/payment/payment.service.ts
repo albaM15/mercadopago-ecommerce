@@ -38,20 +38,19 @@ export class PaymentService {
         payer: {
           email: createPreferenceDto.customerEmail,
         },
-        // URLs referenciales (no afectarán si quitamos auto_return)
         back_urls: {
           success: 'http://localhost:3000/pago-exitoso',
           failure: 'http://localhost:3000/pago-fallido',
           pending: 'http://localhost:3000/pago-pendiente',
         },
-        // 🛑 COMENTAMOS ESTA LÍNEA PARA QUE NO TE DE ERROR
-        // auto_return: 'approved' as const, 
-        
-        external_reference: createPreferenceDto.orderId,
-        statement_descriptor: 'MI TIENDA',
         payment_methods: {
+          excluded_payment_methods: [],
+          excluded_payment_types: [],
           installments: 12,
         },
+        external_reference: createPreferenceDto.orderId,
+        notification_url: `${this.configService.get('BACKEND_URL') || 'http://localhost:3001'}/payment/webhook`,
+        statement_descriptor: 'MI TIENDA',
       };
 
       console.log('🚀 Creando preferencia...');

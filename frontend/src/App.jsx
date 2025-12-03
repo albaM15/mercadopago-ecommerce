@@ -1,28 +1,67 @@
+import { useState, useEffect } from 'react';
 import { initMercadoPago, Payment } from '@mercadopago/sdk-react';
 
-// 👇 1. PON AQUÍ TU PUBLIC KEY (Sácala del panel de desarrolladores)
+// TU PUBLIC KEY
 initMercadoPago('TEST-949547b6-1065-4b13-84f1-7bf562db0b19', { locale: 'es-PE' });
 
 function App() {
-  
+  const [preferenceId, setPreferenceId] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Generar preferencia dinámicamente al cargar
+    fetch('http://localhost:3001/payment/create-preference', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        items: [
+          {
+            title: 'Producto de prueba',
+            quantity: 1,
+            unit_price: 250.00,
+            currency_id: 'PEN'
+          }
+        ],
+        orderId: `ORDER-${Date.now()}`,
+        customerEmail: 'test@test.com'
+      })
+    })
+    .then(res => res.json())
+    .then(data => {
+      console.log('✅ Preference ID generado:', data.preferenceId);
+      setPreferenceId(data.preferenceId);
+      setLoading(false);
+    })
+    .catch(err => {
+      console.error('❌ Error creando preferencia:', err);
+      setLoading(false);
+    });
+  }, []);
+
+  if (loading) {
+    return <div style={{ textAlign: 'center', marginTop: '50px' }}>Cargando métodos de pago...</div>;
+  }
+
+  if (!preferenceId) {
+    return <div style={{ textAlign: 'center', marginTop: '50px' }}>Error al cargar. Revisa la consola.</div>;
+  }
+
   const initialization = {
     amount: 250.00,
-    // 👇 2. ESTE ES EL ID QUE OBTUVISTE CON CURL (Ya te lo puse aquí)
-    preferenceId: '3032856182-323e1732-9583-4a47-bbc7-323c0f3ad3e9',
+    preferenceId: preferenceId,
   };
 
   const customization = {
     paymentMethods: {
-      creditCard: 'all',
-      debitCard: 'all',
-      mercadoPago: 'all',
+     creditCard: "all",
+      debitCard: "all",
+      ticket: "all",         // Activa PagoEfectivo (códigos CIP)
+      bankTransfer: "all",   // Activa Yape/Plin (QR)
+     mercadoPago: "all",    // Billetera MP
     },
   };
 
   const onSubmit = async ({ selectedPaymentMethod, formData }) => {
-    console.log("📤 Enviando datos al backend...", formData);
-    
-    // Aquí enviamos el token generado por el Brick a tu backend
     return new Promise((resolve, reject) => {
       fetch("http://localhost:3001/payment/process", {
         method: "POST",
@@ -31,42 +70,34 @@ function App() {
       })
       .then((response) => response.json())
       .then((data) => {
-        console.log("✅ Respuesta del Backend:", data);
-        // Si el pago es exitoso, mostramos alerta
-        if(data.status === 'approved' || data.status === 'in_process'){
-            alert("¡Pago Procesado Exitosamente! ID: " + data.id);
-            resolve();
+        console.log("Respuesta:", data);
+        
+        // Manejo de respuestas
+        if (data.status === 'approved') {
+            alert("✅ ¡Pago Aprobado!");
+        } else if (data.status === 'pending') {
+            // CASO YAPE / PAGOEFECTIVO
+            alert("🎫 Código generado. Revisa tu correo o la consola para ver el CIP/QR.");
         } else {
-            alert("El pago no fue aprobado. Estado: " + data.status);
-            resolve(); // Resolvemos igual para que el brick deje de cargar
+            alert("Estado: " + data.status);
         }
+        resolve();
       })
       .catch((error) => {
-        console.error("❌ Error de red:", error);
-        alert("Error al conectar con el servidor");
+        console.error("Error:", error);
         reject();
       });
     });
   };
 
-  const onError = async (error) => {
-    console.log(error);
-  };
-
-  const onReady = async () => {
-    console.log("Brick listo y cargado");
-  };
-
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: '50px' }}>
-      <h1>Checkout Zapatillas Nike</h1>
-      <div style={{ width: '100%', maxWidth: '500px', border: '1px solid #ccc', padding: '20px', borderRadius: '10px' }}>
+    <div style={{ display: 'flex', justifyContent: 'center', marginTop: '50px' }}>
+      <div style={{ width: '500px', padding: '20px', border: '1px solid #ccc' }}>
+        <h2>Prueba Yape / PagoEfectivo</h2>
         <Payment
           initialization={initialization}
           customization={customization}
           onSubmit={onSubmit}
-          onReady={onReady}
-          onError={onError}
         />
       </div>
     </div>
